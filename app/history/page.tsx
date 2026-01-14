@@ -71,8 +71,8 @@ export default function HistoryPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-zinc-100">Historical Data</h1>
-        <p className="text-sm text-zinc-400 mt-1">
+        <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">Historical Data</h1>
+        <p className="text-sm text-zinc-600 dark:text-zinc-400 mt-1">
           Track stablecoin peg deviations over time
         </p>
       </div>
@@ -89,9 +89,9 @@ export default function HistoryPage() {
         stablecoins={stablecoinsForSelector}
       />
 
-      <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-6">
+      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-6 transition-colors">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-zinc-100">
+          <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
             Deviation History (basis points)
           </h2>
           {data.length > 0 && (
@@ -144,12 +144,12 @@ export default function HistoryPage() {
         )}
       </div>
 
-      <div className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-4">
-        <h3 className="text-sm font-medium text-zinc-300 mb-2">
+      <div className="bg-zinc-100 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 transition-colors">
+        <h3 className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">
           About Historical Data
         </h3>
         <ul className="text-sm text-zinc-500 space-y-1">
-          <li>Data is collected every 5 minutes from DeFiLlama</li>
+          <li>Data is collected every 5 minutes via DEX aggregator quotes</li>
           <li>Historical data starts from when the monitor was first deployed</li>
           <li>Reference lines show stable (+/-5 bps) and warning (+/-25 bps) thresholds</li>
         </ul>

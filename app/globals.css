@@ -3,8 +3,21 @@
 @tailwind utilities;
 
 :root {
+  --foreground: #18181b;
+  --background: #fafafa;
+  --card: #ffffff;
+  --card-border: #e4e4e7;
+  --muted: #71717a;
+  --muted-foreground: #a1a1aa;
+}
+
+.dark {
   --foreground: #fafafa;
   --background: #09090b;
+  --card: #18181b;
+  --card-border: #27272a;
+  --muted: #a1a1aa;
+  --muted-foreground: #71717a;
 }
 
 html {
@@ -14,28 +27,47 @@ html {
 body {
   color: var(--foreground);
   background: var(--background);
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
+/* Light mode scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #18181b;
+  background: #f4f4f5;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #3f3f46;
+  background: #d4d4d8;
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
+  background: #a1a1aa;
+}
+
+/* Dark mode scrollbar */
+.dark ::-webkit-scrollbar-track {
+  background: #18181b;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
   background: #52525b;
 }
 
 * {
   scrollbar-width: thin;
+  scrollbar-color: #d4d4d8 #f4f4f5;
+}
+
+.dark * {
   scrollbar-color: #3f3f46 #18181b;
 }
 
