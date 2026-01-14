@@ -10,8 +10,6 @@ export const STABLECOINS = [
   { id: "usds", symbol: "USDS", name: "Sky Dollar", address: "0xdC035D45d973E3EC169d2276DDab16f1e407384F", decimals: 18 },
   { id: "frax", symbol: "FRAX", name: "Frax", address: "0x853d955aCEf822Db058eb8505911ED77F175b99e", decimals: 18 },
   { id: "gho", symbol: "GHO", name: "Aave GHO", address: "0x40D16FC0246aD3160Ccc09B8D0D3A2cD28aE6C2f", decimals: 18 },
-  { id: "first-digital-usd", symbol: "FDUSD", name: "First Digital USD", address: "0xc5f0f7b66764F6ec8C8Dff7BA683102295E16409", decimals: 18 },
-  { id: "true-usd", symbol: "TUSD", name: "TrueUSD", address: "0x0000000000085d4780B73119b644AE5ecd22b376", decimals: 18 },
   { id: "crvusd", symbol: "crvUSD", name: "Curve USD", address: "0xf939E0A03FB07F59A73314E73794Be0E57ac1b4E", decimals: 18 },
   { id: "liquity-usd", symbol: "LUSD", name: "Liquity USD", address: "0x5f98805A4E8be255a32880FDeC7F6728C6568bA0", decimals: 18 },
   { id: "usual-usd", symbol: "USD0", name: "Usual USD", address: "0x73A15FeD60Bf67631dC6cd7Bc5B6e8da8190aCF5", decimals: 18 },
