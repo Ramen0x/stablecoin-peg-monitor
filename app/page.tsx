@@ -1,101 +1,153 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useState, useEffect, useCallback } from "react";
+import BaseAssetToggle from "@/components/BaseAssetToggle";
+import PegBarChart from "@/components/PegBarChart";
+import { formatBps, getRelativeTime, getBarColor } from "@/lib/utils";
+import { REFRESH_INTERVAL, DEVIATION_THRESHOLDS } from "@/lib/constants";
+
+interface PriceData {
+  id: string;
+  symbol: string;
+  name: string;
+  price: number;
+  deviationBps: number;
+}
+
+interface ApiResponse {
+  success: boolean;
+  base: string;
+  timestamp: number;
+  prices: PriceData[];
+  error?: string;
+}
+
+export default function Dashboard() {
+  const [base, setBase] = useState("USD");
+  const [prices, setPrices] = useState<PriceData[]>([]);
+  const [timestamp, setTimestamp] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchPrices = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/prices?base=${base}&live=true`);
+      const data: ApiResponse = await response.json();
+      if (!data.success) throw new Error(data.error || "Failed to fetch prices");
+      setPrices(data.prices);
+      setTimestamp(data.timestamp);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setLoading(false);
+    }
+  }, [base]);
+
+  useEffect(() => {
+    fetchPrices();
+    const interval = setInterval(fetchPrices, REFRESH_INTERVAL);
+    return () => clearInterval(interval);
+  }, [fetchPrices]);
+
+  const stableCount = prices.filter((p) => Math.abs(p.deviationBps) <= DEVIATION_THRESHOLDS.STABLE).length;
+  const warningCount = prices.filter((p) => Math.abs(p.deviationBps) > DEVIATION_THRESHOLDS.STABLE && Math.abs(p.deviationBps) <= DEVIATION_THRESHOLDS.WARNING).length;
+  const criticalCount = prices.filter((p) => Math.abs(p.deviationBps) > DEVIATION_THRESHOLDS.WARNING).length;
+
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="https://nextjs.org/icons/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
-
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="https://nextjs.org/icons/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-zinc-100">Live Peg Status</h1>
+          <p className="text-sm text-zinc-400 mt-1">Real-time stablecoin deviation from {base === "USD" ? "$1.00" : base}</p>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+        <BaseAssetToggle value={base} onChange={setBase} />
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-zinc-400 text-sm">Stable</span>
+            <span className="text-green-500 text-2xl font-bold">{stableCount}</span>
+          </div>
+          <p className="text-zinc-500 text-xs mt-1">Within +/-5 bps</p>
+        </div>
+        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-zinc-400 text-sm">Minor Deviation</span>
+            <span className="text-yellow-500 text-2xl font-bold">{warningCount}</span>
+          </div>
+          <p className="text-zinc-500 text-xs mt-1">Within +/-25 bps</p>
+        </div>
+        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-zinc-400 text-sm">Significant Deviation</span>
+            <span className="text-red-500 text-2xl font-bold">{criticalCount}</span>
+          </div>
+          <p className="text-zinc-500 text-xs mt-1">Beyond +/-25 bps</p>
+        </div>
+      </div>
+
+      <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-zinc-100">Deviation from Peg (basis points)</h2>
+          {timestamp && <span className="text-sm text-zinc-500">Updated {getRelativeTime(timestamp)}</span>}
+        </div>
+        {loading ? (
+          <div className="h-[500px] flex items-center justify-center">
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+              <span className="text-zinc-400 text-sm">Loading prices...</span>
+            </div>
+          </div>
+        ) : error ? (
+          <div className="h-[500px] flex items-center justify-center">
+            <div className="text-center">
+              <p className="text-red-400 mb-2">Error loading data</p>
+              <p className="text-zinc-500 text-sm">{error}</p>
+              <button onClick={fetchPrices} className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Retry</button>
+            </div>
+          </div>
+        ) : (
+          <PegBarChart data={prices} />
+        )}
+      </div>
+
+      <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
+        <div className="p-4 border-b border-zinc-800">
+          <h2 className="text-lg font-semibold text-zinc-100">Detailed View</h2>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-zinc-800 bg-zinc-900/50">
+                <th className="text-left px-4 py-3 text-sm font-medium text-zinc-400">Symbol</th>
+                <th className="text-left px-4 py-3 text-sm font-medium text-zinc-400">Name</th>
+                <th className="text-right px-4 py-3 text-sm font-medium text-zinc-400">Price</th>
+                <th className="text-right px-4 py-3 text-sm font-medium text-zinc-400">Deviation</th>
+                <th className="text-center px-4 py-3 text-sm font-medium text-zinc-400">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {prices.sort((a, b) => Math.abs(b.deviationBps) - Math.abs(a.deviationBps)).map((price) => (
+                <tr key={price.id} className="border-b border-zinc-800/50 hover:bg-zinc-800/30">
+                  <td className="px-4 py-3 font-medium text-zinc-100">{price.symbol}</td>
+                  <td className="px-4 py-3 text-zinc-400">{price.name}</td>
+                  <td className="px-4 py-3 text-right font-mono text-zinc-300">${price.price?.toFixed(6) ?? "N/A"}</td>
+                  <td className="px-4 py-3 text-right font-mono" style={{ color: getBarColor(price.deviationBps) }}>{formatBps(price.deviationBps)}</td>
+                  <td className="px-4 py-3 text-center"><span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: getBarColor(price.deviationBps) }} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-center gap-6 text-sm text-zinc-400">
+        <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-green-500" /><span>Stable (+/-5 bps)</span></div>
+        <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-yellow-500" /><span>Warning (+/-25 bps)</span></div>
+        <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-red-500" /><span>Critical (&gt;25 bps)</span></div>
+      </div>
     </div>
   );
 }
