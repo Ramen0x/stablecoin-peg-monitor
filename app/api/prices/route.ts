@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
     }
 
     await initializeDb();
-    await seedStablecoins(STABLECOINS);
+    await seedStablecoins([...STABLECOINS]);
     const dbPrices = await getLatestPrices();
 
     if (dbPrices.length === 0 || dbPrices.every((p) => p.price === null)) {
