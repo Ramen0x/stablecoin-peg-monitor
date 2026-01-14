@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getLatestPrices, initializeDb, seedStablecoins } from "@/lib/db";
-import { fetchStablecoinPrices, calculateRelativeDeviations } from "@/lib/aggregator";
+import { fetchStablecoinPrices } from "@/lib/aggregator";
 import { STABLECOINS, BASE_ASSETS, TRADE_SIZES, type TradeSize } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
