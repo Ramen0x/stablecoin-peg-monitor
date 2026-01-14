@@ -3,14 +3,20 @@ import { fetchStablecoinPrices } from "@/lib/defillama";
 import { initializeDb, seedStablecoins, insertPriceSnapshot } from "@/lib/db";
 import { STABLECOINS } from "@/lib/constants";
 
-const CRON_SECRET = process.env.CRON_SECRET;
-
 export async function GET(request: NextRequest) {
   try {
+    const cronSecret = process.env.CRON_SECRET;
     const authHeader = request.headers.get("authorization");
-    if (CRON_SECRET && authHeader !== `Bearer ${CRON_SECRET}`) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    
+    // Only check auth if CRON_SECRET is set and non-empty
+    if (cronSecret && cronSecret.length > 0) {
+      const expectedAuth = `Bearer ${cronSecret}`;
+      if (authHeader !== expectedAuth) {
+        console.log("Auth mismatch:", { received: authHeader, expected: expectedAuth });
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
     }
+    
     await initializeDb();
     await seedStablecoins([...STABLECOINS]);
     const prices = await fetchStablecoinPrices();
