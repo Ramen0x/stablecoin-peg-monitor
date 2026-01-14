@@ -2,7 +2,7 @@
 export const STABLECOINS = [
   { id: "tether", symbol: "USDT", name: "Tether", address: "0xdAC17F958D2ee523a2206206994597C13D831ec7", decimals: 6 },
   { id: "usd-coin", symbol: "USDC", name: "USD Coin", address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", decimals: 6 },
-  { id: "ripple-usd", symbol: "RLUSD", name: "Ripple USD", address: "0x8292Bb45bf1Ee2F643c840b13F9d89AF5bFb5F5F", decimals: 18 },
+  { id: "ripple-usd", symbol: "RLUSD", name: "Ripple USD", address: "0x8292bb45bf1ee4d140127049757c2e0ff06317ed", decimals: 18 },
   { id: "paypal-usd", symbol: "PYUSD", name: "PayPal USD", address: "0x6c3ea9036406852006290770BEdFcAbA0e23A0e8", decimals: 6 },
   { id: "ethena-usde", symbol: "USDe", name: "Ethena USDe", address: "0x4c9EDD5852cd905f086C759E8383e09bff1E68B3", decimals: 18 },
   { id: "agora-dollar", symbol: "AUSD", name: "Agora Dollar", address: "0x00000000eFE302BEAA2b3e6e1b18d08D69a9012a", decimals: 6 },

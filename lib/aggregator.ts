@@ -106,7 +106,8 @@ async function fetchParaSwapQuote(
   sellToken: string,
   buyToken: string,
   sellAmount: string,
-  sellDecimals: number
+  sellDecimals: number,
+  buyDecimals: number
 ): Promise<QuoteResult | null> {
   try {
     const params = new URLSearchParams({
@@ -114,7 +115,7 @@ async function fetchParaSwapQuote(
       destToken: buyToken,
       amount: sellAmount,
       srcDecimals: sellDecimals.toString(),
-      destDecimals: "18", // Most stablecoins are 18 decimals
+      destDecimals: buyDecimals.toString(),
       side: "SELL",
       network: CHAIN_ID.toString(),
     });
@@ -149,22 +150,24 @@ async function fetchParaSwapQuote(
 }
 
 // ============ Unified Quote Fetcher with Fallback ============
+// Order: Odos (most reliable) → ParaSwap (often best prices) → 0x (backup)
 async function fetchQuoteWithFallback(
   sellToken: string,
   buyToken: string,
   sellAmount: string,
-  sellDecimals: number
+  sellDecimals: number,
+  buyDecimals: number
 ): Promise<QuoteResult | null> {
-  // Try 0x first
-  let quote = await fetch0xQuote(sellToken, buyToken, sellAmount);
+  // Try Odos first (most reliable, good coverage)
+  let quote = await fetchOdosQuote(sellToken, buyToken, sellAmount);
   if (quote) return quote;
 
-  // Try Odos
-  quote = await fetchOdosQuote(sellToken, buyToken, sellAmount);
+  // Try ParaSwap (often has best prices)
+  quote = await fetchParaSwapQuote(sellToken, buyToken, sellAmount, sellDecimals, buyDecimals);
   if (quote) return quote;
 
-  // Try ParaSwap
-  quote = await fetchParaSwapQuote(sellToken, buyToken, sellAmount, sellDecimals);
+  // Try 0x as fallback
+  quote = await fetch0xQuote(sellToken, buyToken, sellAmount);
   if (quote) return quote;
 
   return null;
@@ -237,7 +240,8 @@ export async function fetchStablecoinQuotes(
         baseToken.address,
         coin.address,
         sellAmountRaw,
-        baseToken.decimals
+        baseToken.decimals,
+        coin.decimals
       );
 
       if (quote) {
