@@ -5,26 +5,30 @@ export function calculateDeviationBps(price: number, pegValue: number = 1.0): nu
   return Math.round(deviation * 100) / 100;
 }
 
-export function getDeviationColor(deviationBps: number): string {
+export function getDeviationColor(deviationBps: number | null): string {
+  if (deviationBps === null) return "text-zinc-500";
   const absDeviation = Math.abs(deviationBps);
   if (absDeviation <= DEVIATION_THRESHOLDS.STABLE) return "text-green-500";
   if (absDeviation <= DEVIATION_THRESHOLDS.WARNING) return "text-yellow-500";
   return "text-red-500";
 }
 
-export function getBarColor(deviationBps: number): string {
+export function getBarColor(deviationBps: number | null): string {
+  if (deviationBps === null) return "#71717a"; // zinc-500
   const absDeviation = Math.abs(deviationBps);
   if (absDeviation <= DEVIATION_THRESHOLDS.STABLE) return "#22c55e";
   if (absDeviation <= DEVIATION_THRESHOLDS.WARNING) return "#eab308";
   return "#ef4444";
 }
 
-export function formatBps(bps: number): string {
+export function formatBps(bps: number | null): string {
+  if (bps === null) return "N/A";
   const sign = bps >= 0 ? "+" : "";
   return `${sign}${bps.toFixed(2)} bps`;
 }
 
-export function formatPrice(price: number): string {
+export function formatPrice(price: number | null): string {
+  if (price === null) return "N/A";
   return `$${price.toFixed(6)}`;
 }
 

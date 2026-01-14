@@ -1,19 +1,184 @@
-// 0x API client for fetching real DEX swap quotes
+// Multi-aggregator client with fallback: 0x -> Odos -> ParaSwap
 import { STABLECOINS, TRADE_SIZES, type TradeSize } from "./constants";
 import { calculateDeviationBps } from "./utils";
 
-const ZEROX_API_BASE = "https://api.0x.org";
 const CHAIN_ID = 1; // Ethereum mainnet
 
-// Taker address for price quotes (must be a valid address > 0xffff)
-// Using a well-known address (doesn't need to hold tokens for indicative prices)
+// Taker address for price quotes (must be a valid address)
 const TAKER_ADDRESS = "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045";
 
-interface QuoteResponse {
+interface QuoteResult {
   buyAmount: string;
   sellAmount: string;
-  estimatedPriceImpact?: string;
-  liquidityAvailable?: boolean;
+  source: string;
+}
+
+// ============ 0x API ============
+async function fetch0xQuote(
+  sellToken: string,
+  buyToken: string,
+  sellAmount: string
+): Promise<QuoteResult | null> {
+  const apiKey = process.env.ZEROX_API_KEY;
+  if (!apiKey) return null;
+
+  const params = new URLSearchParams({
+    chainId: CHAIN_ID.toString(),
+    sellToken,
+    buyToken,
+    sellAmount,
+    taker: TAKER_ADDRESS,
+  });
+
+  try {
+    const response = await fetch(
+      `https://api.0x.org/swap/allowance-holder/price?${params.toString()}`,
+      {
+        headers: {
+          "0x-api-key": apiKey,
+          "0x-version": "v2",
+        },
+        next: { revalidate: 0 },
+      }
+    );
+
+    if (!response.ok) {
+      console.error(`0x API error: ${response.status}`);
+      return null;
+    }
+
+    const data = await response.json();
+    return {
+      buyAmount: data.buyAmount,
+      sellAmount: data.sellAmount || sellAmount,
+      source: "0x",
+    };
+  } catch (error) {
+    console.error("0x API failed:", error);
+    return null;
+  }
+}
+
+// ============ Odos API ============
+async function fetchOdosQuote(
+  sellToken: string,
+  buyToken: string,
+  sellAmount: string
+): Promise<QuoteResult | null> {
+  try {
+    const response = await fetch("https://api.odos.xyz/sor/quote/v2", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        chainId: CHAIN_ID,
+        inputTokens: [{ tokenAddress: sellToken, amount: sellAmount }],
+        outputTokens: [{ tokenAddress: buyToken, proportion: 1 }],
+        slippageLimitPercent: 0.5,
+        userAddr: TAKER_ADDRESS,
+        simple: true,
+      }),
+      next: { revalidate: 0 },
+    });
+
+    if (!response.ok) {
+      console.error(`Odos API error: ${response.status}`);
+      return null;
+    }
+
+    const data = await response.json();
+    if (!data.outAmounts || data.outAmounts.length === 0) return null;
+
+    return {
+      buyAmount: data.outAmounts[0],
+      sellAmount: data.inAmounts?.[0] || sellAmount,
+      source: "odos",
+    };
+  } catch (error) {
+    console.error("Odos API failed:", error);
+    return null;
+  }
+}
+
+// ============ ParaSwap API ============
+async function fetchParaSwapQuote(
+  sellToken: string,
+  buyToken: string,
+  sellAmount: string,
+  sellDecimals: number
+): Promise<QuoteResult | null> {
+  try {
+    const params = new URLSearchParams({
+      srcToken: sellToken,
+      destToken: buyToken,
+      amount: sellAmount,
+      srcDecimals: sellDecimals.toString(),
+      destDecimals: "18", // Most stablecoins are 18 decimals
+      side: "SELL",
+      network: CHAIN_ID.toString(),
+    });
+
+    const response = await fetch(
+      `https://api.paraswap.io/prices?${params.toString()}`,
+      {
+        headers: {
+          Accept: "application/json",
+        },
+        next: { revalidate: 0 },
+      }
+    );
+
+    if (!response.ok) {
+      console.error(`ParaSwap API error: ${response.status}`);
+      return null;
+    }
+
+    const data = await response.json();
+    if (!data.priceRoute) return null;
+
+    return {
+      buyAmount: data.priceRoute.destAmount,
+      sellAmount: data.priceRoute.srcAmount || sellAmount,
+      source: "paraswap",
+    };
+  } catch (error) {
+    console.error("ParaSwap API failed:", error);
+    return null;
+  }
+}
+
+// ============ Unified Quote Fetcher with Fallback ============
+async function fetchQuoteWithFallback(
+  sellToken: string,
+  buyToken: string,
+  sellAmount: string,
+  sellDecimals: number
+): Promise<QuoteResult | null> {
+  // Try 0x first
+  let quote = await fetch0xQuote(sellToken, buyToken, sellAmount);
+  if (quote) return quote;
+
+  // Try Odos
+  quote = await fetchOdosQuote(sellToken, buyToken, sellAmount);
+  if (quote) return quote;
+
+  // Try ParaSwap
+  quote = await fetchParaSwapQuote(sellToken, buyToken, sellAmount, sellDecimals);
+  if (quote) return quote;
+
+  return null;
+}
+
+function calculatePrice(
+  sellAmount: string,
+  buyAmount: string,
+  sellDecimals: number,
+  buyDecimals: number
+): number {
+  const sellAmountNormalized = Number(sellAmount) / Math.pow(10, sellDecimals);
+  const buyAmountNormalized = Number(buyAmount) / Math.pow(10, buyDecimals);
+  return buyAmountNormalized / sellAmountNormalized;
 }
 
 interface StablecoinQuote {
@@ -27,76 +192,23 @@ interface StablecoinQuote {
       deviationBps: number;
       buyAmount: string;
       sellAmount: string;
-      priceImpact: number | null;
-      liquidityAvailable: boolean;
+      source: string;
     } | null;
   };
 }
 
-async function fetchQuote(
-  sellToken: string,
-  buyToken: string,
-  sellAmount: string
-): Promise<QuoteResponse | null> {
-  const apiKey = process.env.ZEROX_API_KEY;
-  if (!apiKey) {
-    throw new Error("ZEROX_API_KEY environment variable is not set");
-  }
-
-  const params = new URLSearchParams({
-    chainId: CHAIN_ID.toString(),
-    sellToken,
-    buyToken,
-    sellAmount,
-    taker: TAKER_ADDRESS,
-  });
-
-  try {
-    const response = await fetch(
-      `${ZEROX_API_BASE}/swap/allowance-holder/price?${params.toString()}`,
-      {
-        headers: {
-          "0x-api-key": apiKey,
-          "0x-version": "v2",
-        },
-        next: { revalidate: 0 },
-      }
-    );
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`0x API error for ${sellToken} -> ${buyToken}: ${response.status} - ${errorText}`);
-      return null;
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error(`Failed to fetch quote for ${sellToken} -> ${buyToken}:`, error);
-    return null;
-  }
-}
-
-function calculatePrice(sellAmount: string, buyAmount: string, sellDecimals: number, buyDecimals: number): number {
-  const sellAmountNormalized = Number(sellAmount) / Math.pow(10, sellDecimals);
-  const buyAmountNormalized = Number(buyAmount) / Math.pow(10, buyDecimals);
-  // Price = how much buyToken you get per 1 sellToken
-  // For stablecoin pairs, if both are pegged to $1, price should be ~1
-  return buyAmountNormalized / sellAmountNormalized;
-}
-
 export async function fetchStablecoinQuotes(
   baseAsset: "USDT" | "USDC" = "USDT"
-): Promise<StablecoinQuote[]> {
+): Promise<{ quotes: StablecoinQuote[]; primarySource: string }> {
   const baseToken = STABLECOINS.find((s) => s.symbol === baseAsset);
   if (!baseToken) {
     throw new Error(`Base asset ${baseAsset} not found in stablecoins list`);
   }
 
   const results: StablecoinQuote[] = [];
+  let primarySource = "aggregator";
 
-  // Fetch quotes for each stablecoin against the base asset
   for (const coin of STABLECOINS) {
-    // Skip if same as base asset
     if (coin.symbol === baseAsset) {
       results.push({
         id: coin.id,
@@ -104,9 +216,9 @@ export async function fetchStablecoinQuotes(
         name: coin.name,
         address: coin.address,
         prices: {
-          "1M": { price: 1, deviationBps: 0, buyAmount: "0", sellAmount: "0", priceImpact: 0, liquidityAvailable: true },
-          "5M": { price: 1, deviationBps: 0, buyAmount: "0", sellAmount: "0", priceImpact: 0, liquidityAvailable: true },
-          "10M": { price: 1, deviationBps: 0, buyAmount: "0", sellAmount: "0", priceImpact: 0, liquidityAvailable: true },
+          "1M": { price: 1, deviationBps: 0, buyAmount: "0", sellAmount: "0", source: "base" },
+          "5M": { price: 1, deviationBps: 0, buyAmount: "0", sellAmount: "0", source: "base" },
+          "10M": { price: 1, deviationBps: 0, buyAmount: "0", sellAmount: "0", source: "base" },
         },
       });
       continue;
@@ -118,48 +230,43 @@ export async function fetchStablecoinQuotes(
       "10M": null,
     };
 
-    // Fetch quote for each trade size
     for (const size of TRADE_SIZES) {
-      // Calculate sell amount in base token units (USDT/USDC have 6 decimals)
       const sellAmountRaw = (size.value * Math.pow(10, baseToken.decimals)).toString();
 
-      // We're selling base asset (USDT/USDC) to buy the target stablecoin
-      // This tells us how much of the target coin we get for our base asset
-      const quote = await fetchQuote(baseToken.address, coin.address, sellAmountRaw);
+      const quote = await fetchQuoteWithFallback(
+        baseToken.address,
+        coin.address,
+        sellAmountRaw,
+        baseToken.decimals
+      );
 
       if (quote) {
-        // Price = buyAmount / sellAmount (normalized)
-        // If we sell 1M USDT and get 999,500 DAI, the price is 0.9995 (DAI is slightly expensive)
-        // Actually, we want to show the price of the TARGET coin in terms of base
-        // price = sellAmount / buyAmount = how much base you need per 1 target coin
         const price = calculatePrice(
-          quote.sellAmount || sellAmountRaw,
+          quote.sellAmount,
           quote.buyAmount,
           baseToken.decimals,
           coin.decimals
         );
-        
-        // Invert to get the price of target coin (how much target per 1 base)
-        // Then compare to 1.0 peg
-        const effectivePrice = 1 / price; // This is the exchange rate: 1 base = X target
-        // For deviation, we want to know if target coin is cheap or expensive
-        // If effectivePrice > 1, target is cheap (you get more than 1 for 1 base)
-        // If effectivePrice < 1, target is expensive (you get less than 1 for 1 base)
-        // Deviation from peg: if effectivePrice = 0.999, target is 0.1% expensive
+
+        const effectivePrice = 1 / price;
         const deviationBps = calculateDeviationBps(1 / effectivePrice);
 
         prices[size.label] = {
-          price: 1 / effectivePrice, // Price of target in terms of base
+          price: 1 / effectivePrice,
           deviationBps,
           buyAmount: quote.buyAmount,
-          sellAmount: quote.sellAmount || sellAmountRaw,
-          priceImpact: quote.estimatedPriceImpact ? parseFloat(quote.estimatedPriceImpact) : null,
-          liquidityAvailable: quote.liquidityAvailable ?? true,
+          sellAmount: quote.sellAmount,
+          source: quote.source,
         };
+
+        // Track primary source from first successful quote
+        if (primarySource === "aggregator") {
+          primarySource = quote.source;
+        }
       }
 
-      // Rate limit: 0x has rate limits, add small delay between requests
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      // Small delay to avoid rate limits
+      await new Promise((resolve) => setTimeout(resolve, 50));
     }
 
     results.push({
@@ -171,21 +278,20 @@ export async function fetchStablecoinQuotes(
     });
   }
 
-  return results;
+  return { quotes: results, primarySource };
 }
 
-// Simplified response for the current UI (picks one size)
 export interface StablecoinPrice {
   id: string;
   symbol: string;
   name: string;
-  price: number;
-  deviationBps: number;
+  price: number | null;
+  deviationBps: number | null;
   pricesBySize?: {
     [key in TradeSize]?: {
-      price: number;
-      deviationBps: number;
-      priceImpact: number | null;
+      price: number | null;
+      deviationBps: number | null;
+      source?: string;
     };
   };
 }
@@ -193,10 +299,10 @@ export interface StablecoinPrice {
 export async function fetchStablecoinPrices(
   baseAsset: "USDT" | "USDC" = "USDT",
   primarySize: TradeSize = "1M"
-): Promise<StablecoinPrice[]> {
-  const quotes = await fetchStablecoinQuotes(baseAsset);
+): Promise<{ prices: StablecoinPrice[]; source: string }> {
+  const { quotes, primarySource } = await fetchStablecoinQuotes(baseAsset);
 
-  return quotes.map((quote) => {
+  const prices = quotes.map((quote) => {
     const primaryPrice = quote.prices[primarySize];
     const pricesBySize: StablecoinPrice["pricesBySize"] = {};
 
@@ -206,7 +312,12 @@ export async function fetchStablecoinPrices(
         pricesBySize[size.label] = {
           price: sizePrice.price,
           deviationBps: sizePrice.deviationBps,
-          priceImpact: sizePrice.priceImpact,
+          source: sizePrice.source,
+        };
+      } else {
+        pricesBySize[size.label] = {
+          price: null,
+          deviationBps: null,
         };
       }
     }
@@ -215,21 +326,11 @@ export async function fetchStablecoinPrices(
       id: quote.id,
       symbol: quote.symbol,
       name: quote.name,
-      price: primaryPrice?.price ?? 1,
-      deviationBps: primaryPrice?.deviationBps ?? 0,
+      price: primaryPrice?.price ?? null,
+      deviationBps: primaryPrice?.deviationBps ?? null,
       pricesBySize,
     };
   });
-}
 
-export function calculateRelativeDeviations(
-  prices: StablecoinPrice[],
-  baseSymbol: string
-): StablecoinPrice[] {
-  // For 0x quotes, we're already calculating relative to the base asset
-  // This function is kept for API compatibility
-  return prices.map((coin) => ({
-    ...coin,
-    deviationBps: coin.symbol === baseSymbol ? 0 : coin.deviationBps,
-  }));
+  return { prices, source: primarySource };
 }

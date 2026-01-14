@@ -9,8 +9,8 @@ import { REFRESH_INTERVAL, DEVIATION_THRESHOLDS, type TradeSize } from "@/lib/co
 
 interface PricesBySize {
   [key: string]: {
-    price: number;
-    deviationBps: number;
+    price: number | null;
+    deviationBps: number | null;
     priceImpact: number | null;
   };
 }
@@ -19,8 +19,8 @@ interface PriceData {
   id: string;
   symbol: string;
   name: string;
-  price: number;
-  deviationBps: number;
+  price: number | null;
+  deviationBps: number | null;
   pricesBySize?: PricesBySize;
 }
 
@@ -66,11 +66,13 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, [fetchPrices]);
 
-  const stableCount = prices.filter((p) => Math.abs(p.deviationBps) <= DEVIATION_THRESHOLDS.STABLE).length;
-  const warningCount = prices.filter(
-    (p) => Math.abs(p.deviationBps) > DEVIATION_THRESHOLDS.STABLE && Math.abs(p.deviationBps) <= DEVIATION_THRESHOLDS.WARNING
+  // Filter out prices with null deviationBps for counting
+  const validPrices = prices.filter((p) => p.deviationBps !== null);
+  const stableCount = validPrices.filter((p) => Math.abs(p.deviationBps!) <= DEVIATION_THRESHOLDS.STABLE).length;
+  const warningCount = validPrices.filter(
+    (p) => Math.abs(p.deviationBps!) > DEVIATION_THRESHOLDS.STABLE && Math.abs(p.deviationBps!) <= DEVIATION_THRESHOLDS.WARNING
   ).length;
-  const criticalCount = prices.filter((p) => Math.abs(p.deviationBps) > DEVIATION_THRESHOLDS.WARNING).length;
+  const criticalCount = validPrices.filter((p) => Math.abs(p.deviationBps!) > DEVIATION_THRESHOLDS.WARNING).length;
 
   return (
     <div className="space-y-6">
@@ -78,7 +80,7 @@ export default function Dashboard() {
         <div>
           <h1 className="text-2xl font-bold text-zinc-100">Live Peg Status</h1>
           <p className="text-sm text-zinc-400 mt-1">
-            Real DEX quotes via 0x • Swap ${size} {base} to each stablecoin
+            Real DEX quotes • Swap ${size} {base} to each stablecoin
           </p>
         </div>
         <div className="flex flex-col sm:flex-row gap-4">
@@ -137,7 +139,7 @@ export default function Dashboard() {
             </div>
           </div>
         ) : (
-          <PegBarChart data={prices} />
+          <PegBarChart data={validPrices} />
         )}
       </div>
 
@@ -158,13 +160,19 @@ export default function Dashboard() {
             </thead>
             <tbody>
               {prices
-                .sort((a, b) => Math.abs(b.deviationBps) - Math.abs(a.deviationBps))
+                .sort((a, b) => {
+                  // Put null values at the end
+                  if (a.deviationBps === null && b.deviationBps === null) return 0;
+                  if (a.deviationBps === null) return 1;
+                  if (b.deviationBps === null) return -1;
+                  return Math.abs(b.deviationBps) - Math.abs(a.deviationBps);
+                })
                 .map((price) => (
                   <tr key={price.id} className="border-b border-zinc-800/50 hover:bg-zinc-800/30">
                     <td className="px-4 py-3 font-medium text-zinc-100">{price.symbol}</td>
                     <td className="px-4 py-3 text-zinc-400">{price.name}</td>
                     <td className="px-4 py-3 text-right font-mono text-zinc-300">
-                      {price.price?.toFixed(6) ?? "N/A"}
+                      {price.price !== null ? price.price.toFixed(6) : "N/A"}
                     </td>
                     <td className="px-4 py-3 text-right font-mono" style={{ color: getBarColor(price.deviationBps) }}>
                       {formatBps(price.deviationBps)}

@@ -25,14 +25,14 @@ export async function GET(request: NextRequest) {
     const validBase = BASE_ASSETS.includes(base as "USDT" | "USDC") ? base : "USDT";
 
     if (live) {
-      const prices = await fetchStablecoinPrices(validBase as "USDT" | "USDC", size);
+      const { prices, source } = await fetchStablecoinPrices(validBase as "USDT" | "USDC", size);
       return NextResponse.json({
         success: true,
         base: validBase,
         size,
         timestamp: Math.floor(Date.now() / 1000),
         prices,
-        source: "0x",
+        source,
       });
     }
 
@@ -42,14 +42,14 @@ export async function GET(request: NextRequest) {
     const dbPrices = await getLatestPrices();
 
     if (dbPrices.length === 0 || dbPrices.every((p) => p.price === null)) {
-      const prices = await fetchStablecoinPrices(validBase as "USDT" | "USDC", size);
+      const { prices, source } = await fetchStablecoinPrices(validBase as "USDT" | "USDC", size);
       return NextResponse.json({
         success: true,
         base: validBase,
         size,
         timestamp: Math.floor(Date.now() / 1000),
         prices,
-        source: "0x",
+        source,
       });
     }
 

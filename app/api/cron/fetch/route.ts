@@ -21,19 +21,22 @@ export async function GET(request: NextRequest) {
     await seedStablecoins([...STABLECOINS]);
 
     // Fetch prices using USDT as base, 1M size (default for historical storage)
-    const prices = await fetchStablecoinPrices("USDT", "1M");
+    const { prices, source } = await fetchStablecoinPrices("USDT", "1M");
     const timestamp = Math.floor(Date.now() / 1000);
 
     let inserted = 0;
     for (const price of prices) {
-      await insertPriceSnapshot(price.id, price.price, price.deviationBps, timestamp);
-      inserted++;
+      if (price.price !== null && price.deviationBps !== null) {
+        await insertPriceSnapshot(price.id, price.price, price.deviationBps, timestamp);
+        inserted++;
+      }
     }
 
     return NextResponse.json({
       success: true,
-      message: `Fetched and stored ${inserted} price snapshots via 0x`,
+      message: `Fetched and stored ${inserted} price snapshots via ${source}`,
       timestamp,
+      source,
       prices: prices.map((p) => ({
         symbol: p.symbol,
         price: p.price,
