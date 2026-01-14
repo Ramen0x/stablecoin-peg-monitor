@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     await initializeDb();
-    await seedStablecoins(STABLECOINS);
+    await seedStablecoins([...STABLECOINS]);
     const prices = await fetchStablecoinPrices();
     const timestamp = Math.floor(Date.now() / 1000);
     let inserted = 0;
