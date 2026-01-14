@@ -1,5 +1,5 @@
 "use client";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ReferenceLine, ResponsiveContainer, Cell } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ReferenceLine, ResponsiveContainer, Cell, Label } from "recharts";
 import { getBarColor, formatBps } from "@/lib/utils";
 
 interface PriceData {
@@ -49,8 +49,14 @@ export default function PegBarChart({ data }: PegBarChartProps) {
 
   return (
     <div className="w-full h-[500px]">
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={sortedData} layout="vertical" margin={{ top: 20, right: 30, left: 60, bottom: 20 }}>
+      {/* Axis labels above chart */}
+      <div className="flex justify-between px-16 mb-2 text-xs">
+        <span className="text-green-400">← You get MORE (discount)</span>
+        <span className="text-zinc-500">Basis Points (bps)</span>
+        <span className="text-red-400">You get LESS (premium) →</span>
+      </div>
+      <ResponsiveContainer width="100%" height="90%">
+        <BarChart data={sortedData} layout="vertical" margin={{ top: 10, right: 30, left: 60, bottom: 30 }}>
           <XAxis
             type="number"
             domain={domain}
@@ -58,7 +64,9 @@ export default function PegBarChart({ data }: PegBarChartProps) {
             tickLine={{ stroke: "#52525b" }}
             axisLine={{ stroke: "#52525b" }}
             tickFormatter={(value) => `${value > 0 ? "+" : ""}${value}`}
-          />
+          >
+            <Label value="Deviation from 1:1 peg" position="bottom" offset={10} fill="#71717a" fontSize={11} />
+          </XAxis>
           <YAxis
             type="category"
             dataKey="symbol"
