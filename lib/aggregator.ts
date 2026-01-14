@@ -1,11 +1,10 @@
-// Multi-aggregator client with fallback: 0x -> Odos -> ParaSwap
+// Multi-aggregator client: Query ALL aggregators in parallel, pick best price
 import { STABLECOINS, TRADE_SIZES, type TradeSize } from "./constants";
 import { calculateDeviationBps } from "./utils";
 
 const CHAIN_ID = 1; // Ethereum mainnet
-
-// Taker address for price quotes (must be a valid address)
 const TAKER_ADDRESS = "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045";
+const TIMEOUT_MS = 10000;
 
 interface QuoteResult {
   buyAmount: string;
@@ -22,39 +21,39 @@ async function fetch0xQuote(
   const apiKey = process.env.ZEROX_API_KEY;
   if (!apiKey) return null;
 
-  const params = new URLSearchParams({
-    chainId: CHAIN_ID.toString(),
-    sellToken,
-    buyToken,
-    sellAmount,
-    taker: TAKER_ADDRESS,
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
+    const params = new URLSearchParams({
+      chainId: CHAIN_ID.toString(),
+      sellToken,
+      buyToken,
+      sellAmount,
+      taker: TAKER_ADDRESS,
+    });
+
     const response = await fetch(
       `https://api.0x.org/swap/allowance-holder/price?${params.toString()}`,
       {
-        headers: {
-          "0x-api-key": apiKey,
-          "0x-version": "v2",
-        },
-        next: { revalidate: 0 },
+        headers: { "0x-api-key": apiKey, "0x-version": "v2" },
+        signal: controller.signal,
       }
     );
 
-    if (!response.ok) {
-      console.error(`0x API error: ${response.status}`);
-      return null;
-    }
+    clearTimeout(timeout);
+    if (!response.ok) return null;
 
     const data = await response.json();
+    if (!data.buyAmount || data.liquidityAvailable === false) return null;
+
     return {
       buyAmount: data.buyAmount,
       sellAmount: data.sellAmount || sellAmount,
       source: "0x",
     };
-  } catch (error) {
-    console.error("0x API failed:", error);
+  } catch {
+    clearTimeout(timeout);
     return null;
   }
 }
@@ -65,12 +64,13 @@ async function fetchOdosQuote(
   buyToken: string,
   sellAmount: string
 ): Promise<QuoteResult | null> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
   try {
     const response = await fetch("https://api.odos.xyz/sor/quote/v2", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         chainId: CHAIN_ID,
         inputTokens: [{ tokenAddress: sellToken, amount: sellAmount }],
@@ -79,13 +79,11 @@ async function fetchOdosQuote(
         userAddr: TAKER_ADDRESS,
         simple: true,
       }),
-      next: { revalidate: 0 },
+      signal: controller.signal,
     });
 
-    if (!response.ok) {
-      console.error(`Odos API error: ${response.status}`);
-      return null;
-    }
+    clearTimeout(timeout);
+    if (!response.ok) return null;
 
     const data = await response.json();
     if (!data.outAmounts || data.outAmounts.length === 0) return null;
@@ -95,8 +93,8 @@ async function fetchOdosQuote(
       sellAmount: data.inAmounts?.[0] || sellAmount,
       source: "odos",
     };
-  } catch (error) {
-    console.error("Odos API failed:", error);
+  } catch {
+    clearTimeout(timeout);
     return null;
   }
 }
@@ -109,6 +107,9 @@ async function fetchParaSwapQuote(
   sellDecimals: number,
   buyDecimals: number
 ): Promise<QuoteResult | null> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
   try {
     const params = new URLSearchParams({
       srcToken: sellToken,
@@ -123,54 +124,60 @@ async function fetchParaSwapQuote(
     const response = await fetch(
       `https://api.paraswap.io/prices?${params.toString()}`,
       {
-        headers: {
-          Accept: "application/json",
-        },
-        next: { revalidate: 0 },
+        headers: { Accept: "application/json" },
+        signal: controller.signal,
       }
     );
 
-    if (!response.ok) {
-      console.error(`ParaSwap API error: ${response.status}`);
-      return null;
-    }
+    clearTimeout(timeout);
+    if (!response.ok) return null;
 
     const data = await response.json();
-    if (!data.priceRoute) return null;
+    if (!data.priceRoute?.destAmount) return null;
 
     return {
       buyAmount: data.priceRoute.destAmount,
       sellAmount: data.priceRoute.srcAmount || sellAmount,
       source: "paraswap",
     };
-  } catch (error) {
-    console.error("ParaSwap API failed:", error);
+  } catch {
+    clearTimeout(timeout);
     return null;
   }
 }
 
-// ============ Unified Quote Fetcher with Fallback ============
-// Order: Odos (most reliable) → ParaSwap (often best prices) → 0x (backup)
-async function fetchQuoteWithFallback(
+// ============ Parallel Query - Pick Best Price ============
+async function fetchBestQuote(
   sellToken: string,
   buyToken: string,
   sellAmount: string,
   sellDecimals: number,
   buyDecimals: number
 ): Promise<QuoteResult | null> {
-  // Try Odos first (most reliable, good coverage)
-  let quote = await fetchOdosQuote(sellToken, buyToken, sellAmount);
-  if (quote) return quote;
+  // Query all aggregators in parallel
+  const [odosQuote, paraswapQuote, zeroxQuote] = await Promise.all([
+    fetchOdosQuote(sellToken, buyToken, sellAmount),
+    fetchParaSwapQuote(sellToken, buyToken, sellAmount, sellDecimals, buyDecimals),
+    fetch0xQuote(sellToken, buyToken, sellAmount),
+  ]);
 
-  // Try ParaSwap (often has best prices)
-  quote = await fetchParaSwapQuote(sellToken, buyToken, sellAmount, sellDecimals, buyDecimals);
-  if (quote) return quote;
+  // Collect successful quotes
+  const quotes = [odosQuote, paraswapQuote, zeroxQuote].filter(
+    (q): q is QuoteResult => q !== null
+  );
 
-  // Try 0x as fallback
-  quote = await fetch0xQuote(sellToken, buyToken, sellAmount);
-  if (quote) return quote;
+  if (quotes.length === 0) return null;
 
-  return null;
+  // Pick the quote with highest buyAmount (best price for user)
+  return quotes.reduce((best, current) => {
+    try {
+      const bestAmt = BigInt(best.buyAmount);
+      const currAmt = BigInt(current.buyAmount);
+      return currAmt > bestAmt ? current : best;
+    } catch {
+      return best;
+    }
+  });
 }
 
 function calculatePrice(
@@ -209,11 +216,12 @@ export async function fetchStablecoinQuotes(
   }
 
   const results: StablecoinQuote[] = [];
-  let primarySource = "aggregator";
+  const sourceCounts: Record<string, number> = {};
 
-  for (const coin of STABLECOINS) {
+  // Process all coins in parallel
+  const coinPromises = STABLECOINS.map(async (coin) => {
     if (coin.symbol === baseAsset) {
-      results.push({
+      return {
         id: coin.id,
         symbol: coin.symbol,
         name: coin.name,
@@ -222,31 +230,31 @@ export async function fetchStablecoinQuotes(
           "1M": { price: 1, deviationBps: 0, buyAmount: "0", sellAmount: "0", source: "base" },
           "5M": { price: 1, deviationBps: 0, buyAmount: "0", sellAmount: "0", source: "base" },
           "10M": { price: 1, deviationBps: 0, buyAmount: "0", sellAmount: "0", source: "base" },
-        },
-      });
-      continue;
+        } as StablecoinQuote["prices"],
+      };
     }
 
-    const prices: StablecoinQuote["prices"] = {
-      "1M": null,
-      "5M": null,
-      "10M": null,
-    };
+    const prices: StablecoinQuote["prices"] = { "1M": null, "5M": null, "10M": null };
 
-    for (const size of TRADE_SIZES) {
-      const sellAmountRaw = (size.value * Math.pow(10, baseToken.decimals)).toString();
+    // Fetch all sizes in parallel for this coin
+    const sizeResults = await Promise.all(
+      TRADE_SIZES.map(async (size) => {
+        const sellAmountRaw = (size.value * Math.pow(10, baseToken.decimals)).toString();
+        const quote = await fetchBestQuote(
+          baseToken.address,
+          coin.address,
+          sellAmountRaw,
+          baseToken.decimals,
+          coin.decimals
+        );
+        return { size: size.label, quote, sellAmountRaw };
+      })
+    );
 
-      const quote = await fetchQuoteWithFallback(
-        baseToken.address,
-        coin.address,
-        sellAmountRaw,
-        baseToken.decimals,
-        coin.decimals
-      );
-
+    for (const { size, quote, sellAmountRaw } of sizeResults) {
       if (quote) {
         const price = calculatePrice(
-          quote.sellAmount,
+          quote.sellAmount || sellAmountRaw,
           quote.buyAmount,
           baseToken.decimals,
           coin.decimals
@@ -255,7 +263,7 @@ export async function fetchStablecoinQuotes(
         const effectivePrice = 1 / price;
         const deviationBps = calculateDeviationBps(1 / effectivePrice);
 
-        prices[size.label] = {
+        prices[size] = {
           price: 1 / effectivePrice,
           deviationBps,
           buyAmount: quote.buyAmount,
@@ -263,24 +271,25 @@ export async function fetchStablecoinQuotes(
           source: quote.source,
         };
 
-        // Track primary source from first successful quote
-        if (primarySource === "aggregator") {
-          primarySource = quote.source;
-        }
+        sourceCounts[quote.source] = (sourceCounts[quote.source] || 0) + 1;
       }
-
-      // Small delay to avoid rate limits
-      await new Promise((resolve) => setTimeout(resolve, 50));
     }
 
-    results.push({
+    return {
       id: coin.id,
       symbol: coin.symbol,
       name: coin.name,
       address: coin.address,
       prices,
-    });
-  }
+    };
+  });
+
+  const coinResults = await Promise.all(coinPromises);
+  results.push(...coinResults);
+
+  // Determine primary source (most used)
+  const primarySource = Object.entries(sourceCounts)
+    .sort((a, b) => b[1] - a[1])[0]?.[0] || "multi";
 
   return { quotes: results, primarySource };
 }
@@ -312,18 +321,9 @@ export async function fetchStablecoinPrices(
 
     for (const size of TRADE_SIZES) {
       const sizePrice = quote.prices[size.label];
-      if (sizePrice) {
-        pricesBySize[size.label] = {
-          price: sizePrice.price,
-          deviationBps: sizePrice.deviationBps,
-          source: sizePrice.source,
-        };
-      } else {
-        pricesBySize[size.label] = {
-          price: null,
-          deviationBps: null,
-        };
-      }
+      pricesBySize[size.label] = sizePrice
+        ? { price: sizePrice.price, deviationBps: sizePrice.deviationBps, source: sizePrice.source }
+        : { price: null, deviationBps: null };
     }
 
     return {
