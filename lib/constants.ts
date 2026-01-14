@@ -6,7 +6,7 @@ export const STABLECOINS = [
   { id: "paypal-usd", symbol: "PYUSD", name: "PayPal USD", address: "0x6c3ea9036406852006290770BEdFcAbA0e23A0e8", decimals: 6 },
   { id: "ethena-usde", symbol: "USDe", name: "Ethena USDe", address: "0x4c9EDD5852cd905f086C759E8383e09bff1E68B3", decimals: 18 },
   { id: "agora-dollar", symbol: "AUSD", name: "Agora Dollar", address: "0x00000000eFE302BEAA2b3e6e1b18d08D69a9012a", decimals: 6 },
-  { id: "dai", symbol: "DAI", name: "Dai", address: "0x6B175474E89094C44Da98b954EesdeAC495271d0F", decimals: 18 },
+  { id: "dai", symbol: "DAI", name: "Dai", address: "0x6B175474E89094C44Da98b954EedeAC495271d0F", decimals: 18 },
   { id: "usds", symbol: "USDS", name: "Sky Dollar", address: "0xdC035D45d973E3EC169d2276DDab16f1e407384F", decimals: 18 },
   { id: "frax", symbol: "FRAX", name: "Frax", address: "0x853d955aCEf822Db058eb8505911ED77F175b99e", decimals: 18 },
   { id: "gho", symbol: "GHO", name: "Aave GHO", address: "0x40D16FC0246aD3160Ccc09B8D0D3A2cD28aE6C2f", decimals: 18 },

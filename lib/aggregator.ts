@@ -5,8 +5,9 @@ import { calculateDeviationBps } from "./utils";
 const ZEROX_API_BASE = "https://api.0x.org";
 const CHAIN_ID = 1; // Ethereum mainnet
 
-// Dummy taker address for price quotes (doesn't need to hold tokens for indicative prices)
-const TAKER_ADDRESS = "0x0000000000000000000000000000000000000001";
+// Taker address for price quotes (must be a valid address > 0xffff)
+// Using a well-known address (doesn't need to hold tokens for indicative prices)
+const TAKER_ADDRESS = "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045";
 
 interface QuoteResponse {
   buyAmount: string;
